@@ -339,6 +339,29 @@
     background: var(--zona-error);
 }
 
+/* Past Questions Option (Interactive) */
+.pq-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.pq-option:hover {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.3);
+    transform: translateY(-1px);
+}
+
+.pq-option:active {
+    transform: translateY(0);
+}
+
 .option-text {
     font-size: 0.85rem;
     flex: 1;

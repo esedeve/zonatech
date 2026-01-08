@@ -575,12 +575,14 @@ class ZonaTech_User_Auth {
         
         if (empty($email) || empty($password)) {
             wp_send_json_error(array('message' => 'Email and password are required.'));
+            return;
         }
         
         $user = get_user_by('email', $email);
         
         if (!$user) {
             wp_send_json_error(array('message' => 'Invalid email or password.'));
+            return;
         }
         
         $credentials = array(
@@ -593,7 +595,12 @@ class ZonaTech_User_Auth {
         
         if (is_wp_error($login)) {
             wp_send_json_error(array('message' => 'Invalid email or password.'));
+            return;
         }
+        
+        // Explicitly set the current user and auth cookie after successful login
+        wp_set_current_user($login->ID);
+        wp_set_auth_cookie($login->ID, $remember);
         
         // Log activity
         ZonaTech_Activity_Log::log($user->ID, 'login', 'User logged in');

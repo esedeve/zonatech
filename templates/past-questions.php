@@ -427,12 +427,13 @@ jQuery(document).ready(function($) {
             $.each(pageQuestions, function(index, question) {
                 var questionNumber = startIdx + index + 1;
                 var correctAnswer = question.correct_answer ? question.correct_answer.toUpperCase() : '';
+                var questionId = 'pq-' + questionNumber;
                 
-                html += '<div class="question-item glass-effect" style="padding: 1.5rem; margin-bottom: 1rem; border-radius: 12px; border: 1px solid rgba(139, 92, 246, 0.2);">';
+                html += '<div class="question-item glass-effect" id="' + questionId + '" data-correct="' + correctAnswer + '" data-answered="false" style="padding: 1.5rem; margin-bottom: 1rem; border-radius: 12px; border: 1px solid rgba(139, 92, 246, 0.2);">';
                 html += '<p class="text-white" style="font-weight: 600; font-size: 1rem; line-height: 1.6;"><span style="display: inline-block; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; padding: 2px 10px; border-radius: 6px; margin-right: 10px; font-size: 0.85rem;">Q' + questionNumber + '</span>' + question.question_text + '</p>';
                 html += '<div class="options" style="margin-top: 1rem;">';
                 
-                // Options with correct answer highlighting
+                // Options - clickable, correct answer hidden until selected
                 var options = ['A', 'B', 'C', 'D'];
                 var optionValues = {
                     'A': question.option_a,
@@ -442,24 +443,19 @@ jQuery(document).ready(function($) {
                 };
                 
                 $.each(options, function(i, letter) {
-                    var isCorrect = letter === correctAnswer;
-                    var bgStyle = isCorrect ? 'background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3);' : 'background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1);';
-                    var textStyle = isCorrect ? 'color: #22c55e; font-weight: 600;' : 'color: #a1a1aa;';
-                    var letterStyle = isCorrect ? 'background: #22c55e; color: white;' : 'background: rgba(139, 92, 246, 0.2); color: #8b5cf6;';
-                    var icon = isCorrect ? ' <i class="fas fa-check-circle" style="color: #22c55e; margin-left: auto;"></i>' : '';
-                    
-                    html += '<div style="display: flex; align-items: center; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 0.5rem; ' + bgStyle + '">';
-                    html += '<span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; margin-right: 12px; ' + letterStyle + '">' + letter + '</span>';
-                    html += '<span style="flex: 1; ' + textStyle + '">' + optionValues[letter] + '</span>';
-                    html += icon;
+                    // All options start with neutral styling - correct answer not revealed
+                    html += '<div class="pq-option" data-question="' + questionId + '" data-letter="' + letter + '" style="display: flex; align-items: center; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 0.5rem; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); cursor: pointer; transition: all 0.3s ease;">';
+                    html += '<span class="option-letter" style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; margin-right: 12px; background: rgba(139, 92, 246, 0.2); color: #8b5cf6;">' + letter + '</span>';
+                    html += '<span class="option-text" style="flex: 1; color: #a1a1aa;">' + optionValues[letter] + '</span>';
+                    html += '<span class="option-icon" style="margin-left: auto;"></span>';
                     html += '</div>';
                 });
                 
                 html += '</div>';
                 
-                // Show explanation if available
+                // Explanation - hidden until an option is selected
                 if (question.explanation && question.explanation.trim()) {
-                    html += '<div class="explanation-box" style="margin-top: 1rem; padding: 1rem 1.25rem; background: rgba(139, 92, 246, 0.1); border-left: 4px solid #8b5cf6; border-radius: 0 10px 10px 0;">';
+                    html += '<div class="explanation-box" style="display: none; margin-top: 1rem; padding: 1rem 1.25rem; background: rgba(139, 92, 246, 0.1); border-left: 4px solid #8b5cf6; border-radius: 0 10px 10px 0;">';
                     html += '<p style="color: #8b5cf6; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem;"><i class="fas fa-lightbulb"></i> Explanation</p>';
                     html += '<p class="text-muted" style="margin: 0; line-height: 1.6;">' + question.explanation + '</p>';
                     html += '</div>';
@@ -551,6 +547,89 @@ jQuery(document).ready(function($) {
         $('html, body').animate({
             scrollTop: container.offset().top - 100
         }, 300);
+        
+        // Attach click handlers for past question options
+        attachPqOptionHandlers();
+    }
+    
+    // Handle past question option clicks
+    function attachPqOptionHandlers() {
+        $(document).off('click', '.pq-option').on('click', '.pq-option', function() {
+            var $option = $(this);
+            var questionId = $option.data('question');
+            var selectedLetter = $option.data('letter');
+            var $questionItem = $('#' + questionId);
+            var correctAnswer = $questionItem.data('correct');
+            var isAnswered = $questionItem.data('answered') === true || $questionItem.data('answered') === 'true';
+            
+            // If already answered, do nothing
+            if (isAnswered) {
+                return;
+            }
+            
+            // Mark question as answered
+            $questionItem.data('answered', 'true');
+            
+            var isCorrect = selectedLetter === correctAnswer;
+            
+            // Update all options in this question
+            $questionItem.find('.pq-option').each(function() {
+                var $opt = $(this);
+                var optLetter = $opt.data('letter');
+                var $letterSpan = $opt.find('.option-letter');
+                var $textSpan = $opt.find('.option-text');
+                var $iconSpan = $opt.find('.option-icon');
+                
+                // Remove cursor pointer and hover effects
+                $opt.css('cursor', 'default');
+                
+                if (optLetter === correctAnswer) {
+                    // Highlight correct answer in green
+                    $opt.css({
+                        'background': 'rgba(34, 197, 94, 0.15)',
+                        'border': '1px solid rgba(34, 197, 94, 0.3)'
+                    });
+                    $letterSpan.css({
+                        'background': '#22c55e',
+                        'color': 'white'
+                    });
+                    $textSpan.css({
+                        'color': '#22c55e',
+                        'font-weight': '600'
+                    });
+                    $iconSpan.html('<i class="fas fa-check-circle" style="color: #22c55e;"></i>');
+                } else if (optLetter === selectedLetter && !isCorrect) {
+                    // Highlight wrong selected answer in red
+                    $opt.css({
+                        'background': 'rgba(239, 68, 68, 0.15)',
+                        'border': '1px solid rgba(239, 68, 68, 0.3)'
+                    });
+                    $letterSpan.css({
+                        'background': '#ef4444',
+                        'color': 'white'
+                    });
+                    $textSpan.css({
+                        'color': '#ef4444',
+                        'font-weight': '600'
+                    });
+                    $iconSpan.html('<i class="fas fa-times-circle" style="color: #ef4444;"></i>');
+                }
+            });
+            
+            // Show notification based on correctness
+            if (isCorrect) {
+                if (typeof ZonaTechNotify !== 'undefined') {
+                    ZonaTechNotify.show('Correct! Well done!', 'success', 2000);
+                }
+            } else {
+                if (typeof ZonaTechNotify !== 'undefined') {
+                    ZonaTechNotify.show('Incorrect. The correct answer is ' + correctAnswer, 'error', 3000);
+                }
+            }
+            
+            // Show explanation if available
+            $questionItem.find('.explanation-box').fadeIn(300);
+        });
     }
     
     // Go to specific page (global function for pagination)
