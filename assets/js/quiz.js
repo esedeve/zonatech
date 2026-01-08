@@ -159,6 +159,7 @@
             
             data.questions.forEach(function(q, index) {
                 const correctAnswer = q.correct_answer ? q.correct_answer.toUpperCase() : '';
+                const questionId = 'browse-q-' + index;
                 const options = [
                     { letter: 'A', text: q.option_a },
                     { letter: 'B', text: q.option_b },
@@ -167,32 +168,29 @@
                 ];
                 
                 html += `
-                    <div class="question-card animate-card">
+                    <div class="question-card animate-card" id="${questionId}" data-correct="${correctAnswer}" data-answered="false">
                         <span class="question-number">${index + 1}</span>
                         <p class="question-text">${q.question_text}</p>
                         <div class="question-options">
                 `;
                 
                 options.forEach(function(opt) {
-                    const isCorrect = opt.letter === correctAnswer;
-                    const correctClass = isCorrect ? 'correct' : '';
-                    const icon = isCorrect ? '<i class="fas fa-check-circle" style="color: var(--zona-success); margin-left: auto;"></i>' : '';
-                    
+                    // Options are clickable - correct answer not revealed until selected
                     html += `
-                        <div class="option-item ${correctClass}">
+                        <div class="option-item browse-option" data-question="${questionId}" data-letter="${opt.letter}" style="cursor: pointer;">
                             <span class="option-letter">${opt.letter}</span>
                             <span class="option-text">${opt.text}</span>
-                            ${icon}
+                            <span class="option-icon"></span>
                         </div>
                     `;
                 });
                 
                 html += '</div>';
                 
-                // Show explanation if available
+                // Explanation hidden by default - revealed only when an option is selected
                 if (q.explanation && q.explanation.trim()) {
                     html += `
-                        <div class="explanation" style="padding: 1rem; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--zona-purple); border-radius: 0 0.5rem 0.5rem 0; margin-top: 1rem;">
+                        <div class="explanation" style="display: none; padding: 1rem; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--zona-purple); border-radius: 0 0.5rem 0.5rem 0; margin-top: 1rem;">
                             <strong style="color: var(--zona-purple);"><i class="fas fa-lightbulb"></i> Explanation:</strong>
                             <p style="margin: 0.5rem 0 0; color: var(--zona-text-secondary);">${q.explanation}</p>
                         </div>
@@ -204,6 +202,67 @@
             
             html += '</div>';
             container.html(html);
+            
+            // Attach click handlers for browse options after rendering
+            self.attachBrowseOptionHandlers();
+        },
+        
+        // Attach click handlers for browsing questions (reveal answer on click)
+        attachBrowseOptionHandlers: function() {
+            $(document).off('click', '.browse-option').on('click', '.browse-option', function() {
+                var $option = $(this);
+                var questionId = $option.data('question');
+                var selectedLetter = $option.data('letter');
+                var $questionCard = $('#' + questionId);
+                var correctAnswer = $questionCard.data('correct');
+                var isAnswered = $questionCard.data('answered') === true || $questionCard.data('answered') === 'true';
+                
+                // If already answered, do nothing
+                if (isAnswered) {
+                    return;
+                }
+                
+                // Mark question as answered
+                $questionCard.data('answered', 'true');
+                
+                var isCorrect = selectedLetter === correctAnswer;
+                
+                // Update all options in this question
+                $questionCard.find('.browse-option').each(function() {
+                    var $opt = $(this);
+                    var optLetter = $opt.data('letter');
+                    var $letterSpan = $opt.find('.option-letter');
+                    var $textSpan = $opt.find('.option-text');
+                    var $iconSpan = $opt.find('.option-icon');
+                    
+                    // Remove cursor pointer
+                    $opt.css('cursor', 'default');
+                    
+                    if (optLetter === correctAnswer) {
+                        // Highlight correct answer in green
+                        $opt.addClass('correct');
+                        $iconSpan.html('<i class="fas fa-check-circle" style="color: var(--zona-success); margin-left: auto;"></i>');
+                    } else if (optLetter === selectedLetter && !isCorrect) {
+                        // Highlight wrong selected answer in red
+                        $opt.addClass('wrong');
+                        $iconSpan.html('<i class="fas fa-times-circle" style="color: var(--zona-error); margin-left: auto;"></i>');
+                    }
+                });
+                
+                // Show explanation if available
+                $questionCard.find('.explanation').fadeIn(300);
+                
+                // Show notification
+                if (isCorrect) {
+                    if (typeof ZonaTechNotify !== 'undefined') {
+                        ZonaTechNotify.show('Correct! Well done!', 'success', 2000);
+                    }
+                } else {
+                    if (typeof ZonaTechNotify !== 'undefined') {
+                        ZonaTechNotify.show('Incorrect. The correct answer is ' + correctAnswer, 'error', 3000);
+                    }
+                }
+            });
         },
         
         // Show payment prompt
