@@ -585,9 +585,11 @@ class ZonaTech_Question_Importer {
                 continue;
             }
             
-            // Handle option E by appending to explanation if present
+            // Handle explanation - use parsed explanation, or option E as fallback
             $explanation = '';
-            if (!empty($question['option_e'])) {
+            if (!empty($question['explanation'])) {
+                $explanation = $question['explanation'];
+            } else if (!empty($question['option_e'])) {
                 $explanation = 'E. ' . $question['option_e'];
             }
             
@@ -602,7 +604,7 @@ class ZonaTech_Question_Importer {
                 'option_c' => sanitize_text_field($question['option_c']),
                 'option_d' => sanitize_text_field($question['option_d']),
                 'correct_answer' => sanitize_text_field($question['correct_answer']),
-                'explanation' => $explanation
+                'explanation' => sanitize_textarea_field($explanation)
             ));
             
             if ($result) {

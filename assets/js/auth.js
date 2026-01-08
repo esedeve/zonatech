@@ -5,6 +5,15 @@
 (function($) {
     'use strict';
     
+    // Helper function for notifications with fallback
+    function showNotification(message, type) {
+        if (typeof ZonaTechNotify !== 'undefined' && showNotification) {
+            showNotification(message, type);
+        } else {
+            alert(message);
+        }
+    }
+    
     // Define ZonaTechAuth object first, then initialize
     const ZonaTechAuth = {
         init: function() {
@@ -41,17 +50,18 @@
                     data: data,
                     success: function(response) {
                         if (response.success) {
-                            ZonaTechNotify.show(response.data.message, 'success');
-                            setTimeout(() => {
+                            showNotification(response.data.message, 'success');
+                            setTimeout(function() {
                                 window.location.href = response.data.redirect;
                             }, 1000);
                         } else {
-                            ZonaTechNotify.show(response.data.message, 'error');
+                            showNotification(response.data.message || 'Login failed. Please try again.', 'error');
                             submitBtn.prop('disabled', false).html(originalText);
                         }
                     },
-                    error: function() {
-                        ZonaTechNotify.show('An error occurred. Please try again.', 'error');
+                    error: function(xhr, status, error) {
+                        console.error('Login error:', status, error);
+                        showNotification('An error occurred. Please try again.', 'error');
                         submitBtn.prop('disabled', false).html(originalText);
                     }
                 });
@@ -72,12 +82,12 @@
                 const confirmPassword = form.find('[name="confirm_password"]').val();
                 
                 if (password !== confirmPassword) {
-                    ZonaTechNotify.show('Passwords do not match.', 'error');
+                    showNotification('Passwords do not match.', 'error');
                     return;
                 }
                 
                 if (password.length < 6) {
-                    ZonaTechNotify.show('Password must be at least 6 characters.', 'error');
+                    showNotification('Password must be at least 6 characters.', 'error');
                     return;
                 }
                 
@@ -100,17 +110,17 @@
                     data: data,
                     success: function(response) {
                         if (response.success) {
-                            ZonaTechNotify.show(response.data.message, 'success');
+                            showNotification(response.data.message, 'success');
                             setTimeout(() => {
                                 window.location.href = response.data.redirect;
                             }, 1000);
                         } else {
-                            ZonaTechNotify.show(response.data.message, 'error');
+                            showNotification(response.data.message, 'error');
                             submitBtn.prop('disabled', false).html(originalText);
                         }
                     },
                     error: function() {
-                        ZonaTechNotify.show('An error occurred. Please try again.', 'error');
+                        showNotification('An error occurred. Please try again.', 'error');
                         submitBtn.prop('disabled', false).html(originalText);
                     }
                 });
@@ -137,14 +147,14 @@
                         email: form.find('[name="email"]').val()
                     },
                     success: function(response) {
-                        ZonaTechNotify.show(response.data.message, response.success ? 'success' : 'info');
+                        showNotification(response.data.message, response.success ? 'success' : 'info');
                         submitBtn.prop('disabled', false).html(originalText);
                         if (response.success) {
                             form[0].reset();
                         }
                     },
                     error: function() {
-                        ZonaTechNotify.show('An error occurred. Please try again.', 'error');
+                        showNotification('An error occurred. Please try again.', 'error');
                         submitBtn.prop('disabled', false).html(originalText);
                     }
                 });
@@ -174,14 +184,14 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            ZonaTechNotify.show(response.data.message, 'success');
+                            showNotification(response.data.message, 'success');
                         } else {
-                            ZonaTechNotify.show(response.data.message, 'error');
+                            showNotification(response.data.message, 'error');
                         }
                         submitBtn.prop('disabled', false).html(originalText);
                     },
                     error: function() {
-                        ZonaTechNotify.show('An error occurred. Please try again.', 'error');
+                        showNotification('An error occurred. Please try again.', 'error');
                         submitBtn.prop('disabled', false).html(originalText);
                     }
                 });
@@ -201,7 +211,7 @@
                 const confirmPassword = form.find('[name="confirm_password"]').val();
                 
                 if (newPassword !== confirmPassword) {
-                    ZonaTechNotify.show('New passwords do not match.', 'error');
+                    showNotification('New passwords do not match.', 'error');
                     return;
                 }
                 
@@ -219,15 +229,15 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            ZonaTechNotify.show(response.data.message, 'success');
+                            showNotification(response.data.message, 'success');
                             form[0].reset();
                         } else {
-                            ZonaTechNotify.show(response.data.message, 'error');
+                            showNotification(response.data.message, 'error');
                         }
                         submitBtn.prop('disabled', false).html(originalText);
                     },
                     error: function() {
-                        ZonaTechNotify.show('An error occurred. Please try again.', 'error');
+                        showNotification('An error occurred. Please try again.', 'error');
                         submitBtn.prop('disabled', false).html(originalText);
                     }
                 });
