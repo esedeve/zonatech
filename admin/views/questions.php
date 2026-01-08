@@ -82,6 +82,15 @@ sort($subjects);
         <?php endforeach; ?>
     </div>
     
+    <!-- Delete All Questions Section -->
+    <div class="delete-all-section" style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 15px; margin-bottom: 20px;">
+        <h3 style="margin-top: 0; color: #856404;"><span class="dashicons dashicons-warning"></span> Danger Zone</h3>
+        <p style="color: #856404;">Delete all questions across all exam types and subjects. This action cannot be undone!</p>
+        <button type="button" id="delete-all-questions" class="button button-link-delete" style="background: #dc3545; color: #fff; border-color: #dc3545;">
+            <span class="dashicons dashicons-trash" style="margin-top: 3px;"></span> Delete All Questions
+        </button>
+    </div>
+    
     <!-- Tabs Navigation -->
     <h2 class="nav-tab-wrapper zonatech-admin-tabs">
         <a href="#" class="nav-tab nav-tab-active" data-tab="tab-single">Add Single Question</a>
@@ -626,6 +635,52 @@ jQuery(document).ready(function($) {
             error: function() {
                 $btn.prop('disabled', false).html('<span class="dashicons dashicons-upload" style="margin-top: 3px;"></span> Import Questions');
                 alert('An error occurred. Please try again.');
+            }
+        });
+    });
+    
+    // Delete All Questions Handler
+    $('#delete-all-questions').on('click', function() {
+        var confirmMsg = 'WARNING: This will permanently delete ALL questions from ALL exam types and subjects.\n\n';
+        confirmMsg += 'This action CANNOT be undone!\n\n';
+        confirmMsg += 'Are you absolutely sure you want to proceed?';
+        
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        
+        // Double confirmation
+        var doubleConfirm = prompt('To confirm deletion, type "DELETE ALL" (case-sensitive):');
+        if (doubleConfirm !== 'DELETE ALL') {
+            alert('Deletion cancelled. You must type "DELETE ALL" exactly to confirm.');
+            return;
+        }
+        
+        var $btn = $(this);
+        var originalText = $btn.html();
+        $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin" style="margin-top: 3px;"></span> Deleting...');
+        
+        $.ajax({
+            url: zonatech_admin.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'zonatech_delete_all_questions',
+                nonce: zonatech_admin.nonce
+            },
+            success: function(response) {
+                $btn.prop('disabled', false).html(originalText);
+                
+                if (response.success) {
+                    alert('SUCCESS: ' + response.data.message);
+                    // Refresh the page to update stats
+                    location.reload();
+                } else {
+                    alert('ERROR: ' + (response.data.message || 'Failed to delete questions.'));
+                }
+            },
+            error: function(xhr, status, error) {
+                $btn.prop('disabled', false).html(originalText);
+                alert('Error: ' + error);
             }
         });
     });

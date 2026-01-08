@@ -27,6 +27,9 @@ class ZonaTech_Ajax_Handlers {
         // UltraMsg WhatsApp API handlers
         add_action('wp_ajax_zonatech_save_ultramsg_settings', array($this, 'save_ultramsg_settings'));
         add_action('wp_ajax_zonatech_test_ultramsg', array($this, 'test_ultramsg'));
+        
+        // Admin question management handlers
+        add_action('wp_ajax_zonatech_delete_all_questions', array($this, 'delete_all_questions'));
     }
     
     public function get_dashboard_data() {
@@ -222,6 +225,56 @@ class ZonaTech_Ajax_Handlers {
             }
         } else {
             wp_send_json_error(array('message' => $test_result['message']));
+        }
+    }
+    
+    /**
+     * Delete all questions from the database
+     */
+    public function delete_all_questions() {
+        // Verify nonce
+        check_ajax_referer('zonatech_nonce', 'nonce');
+        
+        // Check if admin
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => 'Unauthorized access. Admin privileges required.'));
+        }
+        
+        global $wpdb;
+        $table_questions = $wpdb->prefix . 'zonatech_questions';
+        
+        // Get count before deletion
+        $count_before = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table_questions");
+        
+        if ($count_before === 0) {
+            wp_send_json_success(array(
+                'message' => 'No questions to delete. The database is already empty.',
+                'deleted_count' => 0
+            ));
+            return;
+        }
+        
+        // Delete all questions
+        $result = $wpdb->query("TRUNCATE TABLE $table_questions");
+        
+        if ($result === false) {
+            // If TRUNCATE fails, try DELETE
+            $result = $wpdb->query("DELETE FROM $table_questions");
+        }
+        
+        // Verify deletion
+        $count_after = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table_questions");
+        
+        if ($count_after === 0) {
+            wp_send_json_success(array(
+                'message' => "Successfully deleted all $count_before questions from the database.",
+                'deleted_count' => $count_before
+            ));
+        } else {
+            wp_send_json_error(array(
+                'message' => 'Failed to delete all questions. Some questions may remain.',
+                'remaining_count' => $count_after
+            ));
         }
     }
 }
