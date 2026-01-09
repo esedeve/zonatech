@@ -39,6 +39,7 @@ class ZonaTech_Database {
             exam_type varchar(20) NOT NULL,
             subject varchar(100) NOT NULL,
             year int(4) NOT NULL,
+            passage_id bigint(20) DEFAULT NULL,
             question_text longtext NOT NULL,
             option_a text NOT NULL,
             option_b text NOT NULL,
@@ -50,9 +51,28 @@ class ZonaTech_Database {
             PRIMARY KEY (id),
             KEY exam_type (exam_type),
             KEY subject (subject),
-            KEY year (year)
+            KEY year (year),
+            KEY passage_id (passage_id)
         ) $charset_collate;";
         dbDelta($sql_questions);
+        
+        // Passages Table (for comprehension passages in English language questions)
+        $table_passages = $wpdb->prefix . 'zonatech_passages';
+        $sql_passages = "CREATE TABLE $table_passages (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            exam_type varchar(20) NOT NULL,
+            subject varchar(100) NOT NULL,
+            year int(4) NOT NULL,
+            passage_title varchar(255) DEFAULT '',
+            passage_text longtext NOT NULL,
+            passage_number int(11) DEFAULT 1,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY exam_type (exam_type),
+            KEY subject (subject),
+            KEY year (year)
+        ) $charset_collate;";
+        dbDelta($sql_passages);
         
         // User Purchases Table
         $table_purchases = $wpdb->prefix . 'zonatech_purchases';

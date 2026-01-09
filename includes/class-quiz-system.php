@@ -36,6 +36,7 @@ class ZonaTech_Quiz_System {
         $exam_type = sanitize_text_field($_POST['exam_type'] ?? '');
         $subject = sanitize_text_field($_POST['subject'] ?? '');
         $question_count = intval($_POST['question_count'] ?? 50); // Default 50 questions per quiz
+        $time_minutes = intval($_POST['time_minutes'] ?? 0); // Custom time in minutes (0 = auto)
         
         // Validate required parameters (year is no longer required)
         if (empty($exam_type) || empty($subject)) {
@@ -79,11 +80,18 @@ class ZonaTech_Quiz_System {
             sprintf('Started %s %s quiz (%d questions)', strtoupper($exam_type), $subject, count($questions))
         );
         
-        // Timer: 10 minutes per 50 questions = 12 seconds per question
-        // 50 questions = 600 seconds (10 min)
-        // 100 questions = 1200 seconds (20 min)
-        // 200 questions = 2400 seconds (40 min)
-        $time_limit = count($questions) * 12; // 12 seconds per question
+        // Timer calculation:
+        // If custom time is provided (in minutes), use that
+        // Otherwise, auto-calculate: 12 seconds per question
+        if ($time_minutes > 0) {
+            // Custom time provided (convert minutes to seconds)
+            $time_limit = $time_minutes * 60;
+        } else {
+            // Auto-calculate: 12 seconds per question
+            // 50 questions = 600 seconds (10 min)
+            // 100 questions = 1200 seconds (20 min)
+            $time_limit = count($questions) * 12;
+        }
         
         wp_send_json_success(array(
             'questions' => $questions,

@@ -289,11 +289,28 @@
         initQuizStarter: function() {
             const self = this;
             
+            // Show quiz settings modal when clicking start quiz button
             $(document).on('click', '#start-quiz-btn', function() {
                 const examType = $(this).data('exam');
                 const subject = $(this).data('subject');
                 
-                self.startQuiz(examType, subject);
+                self.showQuizSettingsModal(examType, subject);
+            });
+            
+            // Start quiz with selected settings
+            $(document).on('click', '#confirm-start-quiz-btn', function() {
+                const examType = $('#quiz-settings-modal').data('exam');
+                const subject = $('#quiz-settings-modal').data('subject');
+                const questionCount = parseInt($('#quiz-question-count').val()) || 50;
+                const timeMinutes = parseInt($('#quiz-time-minutes').val()) || 0;
+                
+                self.hideQuizSettingsModal();
+                self.startQuiz(examType, subject, questionCount, timeMinutes);
+            });
+            
+            // Close quiz settings modal
+            $(document).on('click', '#close-quiz-settings-btn, #quiz-settings-overlay', function() {
+                self.hideQuizSettingsModal();
             });
             
             // Answer selection
@@ -327,10 +344,72 @@
             });
         },
         
-        // Start quiz - no longer requires year
-        startQuiz: function(examType, subject) {
+        // Show quiz settings modal
+        showQuizSettingsModal: function(examType, subject) {
+            // Remove existing modal if any
+            $('#quiz-settings-modal, #quiz-settings-overlay').remove();
+            
+            const modalHtml = `
+                <div id="quiz-settings-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9998;"></div>
+                <div id="quiz-settings-modal" data-exam="${examType}" data-subject="${subject}" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: linear-gradient(135deg, rgba(30, 58, 95, 0.98), rgba(20, 38, 65, 0.98)); border-radius: 20px; padding: 2rem; z-index: 9999; max-width: 450px; width: 90%; box-shadow: 0 25px 50px rgba(0,0,0,0.3);">
+                    <button id="close-quiz-settings-btn" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; color: #a1a1aa; font-size: 1.5rem; cursor: pointer;">&times;</button>
+                    <h3 style="color: #fff; margin-bottom: 1.5rem; text-align: center;"><i class="fas fa-cog"></i> Quiz Settings</h3>
+                    <p style="color: #a1a1aa; text-align: center; margin-bottom: 1.5rem;">${examType.toUpperCase()} - ${subject}</p>
+                    
+                    <div style="margin-bottom: 1.5rem;">
+                        <label style="color: #fff; display: block; margin-bottom: 0.5rem;"><i class="fas fa-list-ol"></i> Number of Questions</label>
+                        <select id="quiz-question-count" style="width: 100%; padding: 0.75rem 1rem; border-radius: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 1rem;">
+                            <option value="10">10 questions</option>
+                            <option value="20">20 questions</option>
+                            <option value="30">30 questions</option>
+                            <option value="40">40 questions</option>
+                            <option value="50" selected>50 questions</option>
+                            <option value="75">75 questions</option>
+                            <option value="100">100 questions</option>
+                        </select>
+                    </div>
+                    
+                    <div style="margin-bottom: 1.5rem;">
+                        <label style="color: #fff; display: block; margin-bottom: 0.5rem;"><i class="fas fa-clock"></i> Time Limit</label>
+                        <select id="quiz-time-minutes" style="width: 100%; padding: 0.75rem 1rem; border-radius: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 1rem;">
+                            <option value="0" selected>Auto (based on questions)</option>
+                            <option value="5">5 minutes</option>
+                            <option value="10">10 minutes</option>
+                            <option value="15">15 minutes</option>
+                            <option value="20">20 minutes</option>
+                            <option value="30">30 minutes</option>
+                            <option value="45">45 minutes</option>
+                            <option value="60">60 minutes (1 hour)</option>
+                            <option value="90">90 minutes (1.5 hours)</option>
+                            <option value="120">120 minutes (2 hours)</option>
+                        </select>
+                        <small style="color: #a1a1aa; display: block; margin-top: 0.5rem;">Auto time: ~12 seconds per question</small>
+                    </div>
+                    
+                    <button id="confirm-start-quiz-btn" style="width: 100%; padding: 1rem; background: linear-gradient(135deg, #8b5cf6, #6366f1); border: none; border-radius: 10px; color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer;">
+                        <i class="fas fa-play"></i> Start Quiz
+                    </button>
+                </div>
+            `;
+            
+            $('body').append(modalHtml);
+        },
+        
+        // Hide quiz settings modal
+        hideQuizSettingsModal: function() {
+            $('#quiz-settings-modal, #quiz-settings-overlay').fadeOut(200, function() {
+                $(this).remove();
+            });
+        },
+        
+        // Start quiz with customizable settings
+        startQuiz: function(examType, subject, questionCount, timeMinutes) {
             const self = this;
             const container = $('#questions-container');
+            
+            // Use defaults if not provided
+            questionCount = questionCount || 50;
+            timeMinutes = timeMinutes || 0; // 0 means auto-calculate
             
             container.html('<div class="loading"><div class="spinner"></div></div>');
             
@@ -342,7 +421,8 @@
                     nonce: zonatech_ajax.nonce,
                     exam_type: examType,
                     subject: subject,
-                    question_count: 50 // Default 50 questions per quiz
+                    question_count: questionCount,
+                    time_minutes: timeMinutes
                 },
                 success: function(response) {
                     if (response.success) {

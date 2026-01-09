@@ -29,6 +29,258 @@ class ZonaTech_Question_Importer {
     }
     
     /**
+     * Parse passages and questions from English language style content
+     * Supports comprehension passages with linked questions
+     * 
+     * Format expected:
+     * - PASSAGE 1: TITLE
+     * - [Passage text content...]
+     * - 1. Question text
+     * - A. option, B. option, etc.
+     * - Answer: X
+     * - Explanation: ...
+     * 
+     * @param string $content The raw text content
+     * @return array Array with 'passages' and 'questions' keys
+     */
+    public function parse_passages_and_questions($content) {
+        $result = array(
+            'passages' => array(),
+            'questions' => array()
+        );
+        
+        // Normalize line endings
+        $content = str_replace(array("\r\n", "\r"), "\n", $content);
+        
+        // Pattern to detect passage headers: "PASSAGE 1:", "### PASSAGE 1:", "PASSAGE 1: TITLE"
+        $passage_pattern = '/^(?:#+\s*)?(?:PASSAGE|SECTION\s*[A-Z]?:?\s*COMPREHENSION\s*PASSAGE?S?)\s*(\d+)?:?\s*(.*)$/im';
+        
+        // Split content by passage markers
+        $parts = preg_split($passage_pattern, $content, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+        
+        // If no passage markers found, just parse as regular questions
+        if (count($parts) <= 1 || !preg_match($passage_pattern, $content)) {
+            $result['questions'] = $this->parse_questions($content);
+            return $result;
+        }
+        
+        // Parse passage sections
+        $current_passage_num = 0;
+        $current_passage_title = '';
+        $current_passage_text = '';
+        $in_passage = false;
+        
+        $lines = explode("\n", $content);
+        $i = 0;
+        $line_count = count($lines);
+        
+        while ($i < $line_count) {
+            $line = trim($lines[$i]);
+            
+            // Check for passage header
+            if (preg_match('/^(?:#+\s*)?(?:PASSAGE|SECTION\s*[A-Z]?:?\s*COMPREHENSION\s*PASSAGE?S?)\s*(\d+)?:?\s*(.*)$/i', $line, $matches)) {
+                // Save previous passage if exists
+                if ($in_passage && !empty($current_passage_text)) {
+                    $result['passages'][$current_passage_num] = array(
+                        'number' => $current_passage_num,
+                        'title' => $current_passage_title,
+                        'text' => trim($current_passage_text)
+                    );
+                }
+                
+                $current_passage_num = !empty($matches[1]) ? intval($matches[1]) : count($result['passages']) + 1;
+                $current_passage_title = trim($matches[2]);
+                $current_passage_text = '';
+                $in_passage = true;
+                $i++;
+                continue;
+            }
+            
+            // Check for question start (numbered line with substantial text)
+            if (preg_match('/^(\d{1,3})\s*[.\)]\s*(.+)$/i', $line, $q_match)) {
+                $potential_num = intval($q_match[1]);
+                $text_after = trim($q_match[2]);
+                
+                // This might be a question - check if it looks like one
+                if ($potential_num >= 1 && strlen($text_after) > 10 && !preg_match('/^[A-Ea-e]\s*[.\)]/i', $text_after)) {
+                    // Save passage before parsing questions
+                    if ($in_passage && !empty($current_passage_text)) {
+                        $result['passages'][$current_passage_num] = array(
+                            'number' => $current_passage_num,
+                            'title' => $current_passage_title,
+                            'text' => trim($current_passage_text)
+                        );
+                    }
+                    
+                    // Collect remaining content as questions section
+                    $questions_content = implode("\n", array_slice($lines, $i));
+                    $parsed_questions = $this->parse_questions_with_answers($questions_content);
+                    
+                    // Link questions to current passage
+                    foreach ($parsed_questions as $num => $q) {
+                        $q['passage_id'] = $current_passage_num;
+                        $result['questions'][$num] = $q;
+                    }
+                    
+                    break;
+                }
+            }
+            
+            // Collect passage text
+            if ($in_passage) {
+                // Skip separator lines
+                if (!preg_match('/^[-–—]{3,}$/', $line)) {
+                    $current_passage_text .= $line . "\n";
+                }
+            }
+            
+            $i++;
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Parse questions with inline answers and explanations (English language style)
+     * 
+     * @param string $content The text content with questions
+     * @return array Parsed questions
+     */
+    public function parse_questions_with_answers($content) {
+        $questions = array();
+        
+        // Normalize line endings
+        $content = str_replace(array("\r\n", "\r"), "\n", $content);
+        
+        // Split by question separators (--- or blank lines before numbers)
+        $blocks = preg_split('/\n\s*-{3,}\s*\n/s', $content);
+        
+        foreach ($blocks as $block) {
+            $block = trim($block);
+            if (empty($block)) continue;
+            
+            // Try to parse as a single question block
+            $question = $this->parse_single_question_block($block);
+            if ($question !== null && !empty($question['question_text'])) {
+                $questions[$question['number']] = $question;
+            }
+        }
+        
+        // If block parsing didn't work well, fall back to line-by-line parsing
+        if (empty($questions)) {
+            $questions = $this->parse_questions($content);
+            
+            // Try to extract answers and explanations from the content
+            $this->extract_answers_from_content($questions, $content);
+        }
+        
+        return $questions;
+    }
+    
+    /**
+     * Parse a single question block (question + options + answer + explanation)
+     * 
+     * @param string $block Text block containing a single question
+     * @return array|null Parsed question or null
+     */
+    private function parse_single_question_block($block) {
+        $lines = explode("\n", $block);
+        
+        $question = array(
+            'number' => 0,
+            'question_text' => '',
+            'option_a' => '',
+            'option_b' => '',
+            'option_c' => '',
+            'option_d' => '',
+            'option_e' => '',
+            'correct_answer' => '',
+            'explanation' => '',
+            'passage_id' => null
+        );
+        
+        $collecting = 'question';
+        
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (empty($line)) continue;
+            
+            // Check for question number at start
+            if (preg_match('/^(\d{1,3})\s*[.\)]\s*(.+)$/i', $line, $matches) && $question['number'] === 0) {
+                $question['number'] = intval($matches[1]);
+                $question['question_text'] = trim($matches[2]);
+                $collecting = 'question';
+                continue;
+            }
+            
+            // Check for options (A., B., C., D., E.)
+            if (preg_match('/^([A-Ea-e])\s*[.\)]\s*(.*)$/i', $line, $matches)) {
+                $letter = strtoupper($matches[1]);
+                $text = trim($matches[2]);
+                
+                switch ($letter) {
+                    case 'A': $question['option_a'] = $text; $collecting = 'option_a'; break;
+                    case 'B': $question['option_b'] = $text; $collecting = 'option_b'; break;
+                    case 'C': $question['option_c'] = $text; $collecting = 'option_c'; break;
+                    case 'D': $question['option_d'] = $text; $collecting = 'option_d'; break;
+                    case 'E': $question['option_e'] = $text; $collecting = 'option_e'; break;
+                }
+                continue;
+            }
+            
+            // Check for Answer line
+            if (preg_match('/^Answer:?\s*([A-Ea-e])/i', $line, $matches)) {
+                $question['correct_answer'] = strtoupper($matches[1]);
+                $collecting = 'answer';
+                continue;
+            }
+            
+            // Check for Explanation line
+            if (preg_match('/^Explanation:?\s*(.*)$/i', $line, $matches)) {
+                $question['explanation'] = trim($matches[1]);
+                $collecting = 'explanation';
+                continue;
+            }
+            
+            // Continue collecting current field
+            if ($collecting === 'question' && empty($question['option_a'])) {
+                $question['question_text'] .= ' ' . $line;
+            } elseif ($collecting === 'explanation') {
+                $question['explanation'] .= ' ' . $line;
+            } elseif ($collecting && isset($question[$collecting]) && is_string($question[$collecting])) {
+                $question[$collecting] .= ' ' . $line;
+            }
+        }
+        
+        // Clean up text fields
+        $question['question_text'] = trim($question['question_text']);
+        $question['explanation'] = trim($question['explanation']);
+        
+        return $question['number'] > 0 ? $question : null;
+    }
+    
+    /**
+     * Extract answers and explanations from content and merge into questions
+     * 
+     * @param array &$questions Questions array (modified in place)
+     * @param string $content Full content text
+     */
+    private function extract_answers_from_content(&$questions, $content) {
+        // Look for Answer: X patterns and associate with questions
+        if (preg_match_all('/(\d{1,3})\s*[.\)]\s*.*?Answer:?\s*([A-Ea-e])\s*(?:Explanation:?\s*([^\n]+(?:\n(?![A-E\d])[^\n]*)*))?/is', $content, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $q_num = intval($match[1]);
+                if (isset($questions[$q_num])) {
+                    $questions[$q_num]['correct_answer'] = strtoupper($match[2]);
+                    if (!empty($match[3])) {
+                        $questions[$q_num]['explanation'] = trim(preg_replace('/\s+/', ' ', $match[3]));
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
      * Parse questions from text content
      * Format expected: 
      * - Numbered questions (e.g., "81. Question text here?")
@@ -593,8 +845,8 @@ class ZonaTech_Question_Importer {
                 $explanation = 'E. ' . $question['option_e'];
             }
             
-            // Insert question
-            $result = $wpdb->insert($table_questions, array(
+            // Build insert data array
+            $insert_data = array(
                 'exam_type' => $exam_type,
                 'subject' => $subject,
                 'year' => $year,
@@ -605,7 +857,15 @@ class ZonaTech_Question_Importer {
                 'option_d' => sanitize_text_field($question['option_d']),
                 'correct_answer' => sanitize_text_field($question['correct_answer']),
                 'explanation' => sanitize_textarea_field($explanation)
-            ));
+            );
+            
+            // Add passage_id if present
+            if (!empty($question['passage_id'])) {
+                $insert_data['passage_id'] = intval($question['passage_id']);
+            }
+            
+            // Insert question
+            $result = $wpdb->insert($table_questions, $insert_data);
             
             if ($result) {
                 $success_count++;
@@ -622,6 +882,113 @@ class ZonaTech_Question_Importer {
             'missing_answers' => $missing_answers,
             'missing_options' => $missing_options_count
         );
+    }
+    
+    /**
+     * Import passages to database
+     * 
+     * @param array $passages Array of passages
+     * @param string $exam_type Exam type
+     * @param string $subject Subject name
+     * @param int $year Year
+     * @return array Map of passage number to database ID
+     */
+    public function import_passages($passages, $exam_type, $subject, $year) {
+        global $wpdb;
+        $table_passages = $wpdb->prefix . 'zonatech_passages';
+        
+        $passage_map = array(); // Maps passage number to database ID
+        
+        foreach ($passages as $num => $passage) {
+            if (empty($passage['text'])) {
+                continue;
+            }
+            
+            // Check if passage already exists
+            $existing = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM $table_passages 
+                 WHERE exam_type = %s AND subject = %s AND year = %d AND passage_number = %d",
+                $exam_type, $subject, $year, $passage['number']
+            ));
+            
+            if ($existing) {
+                $passage_map[$num] = intval($existing);
+                continue;
+            }
+            
+            // Insert new passage
+            $result = $wpdb->insert($table_passages, array(
+                'exam_type' => $exam_type,
+                'subject' => $subject,
+                'year' => $year,
+                'passage_title' => sanitize_text_field($passage['title'] ?? ''),
+                'passage_text' => wp_kses_post($passage['text']),
+                'passage_number' => intval($passage['number'])
+            ));
+            
+            if ($result) {
+                $passage_map[$num] = $wpdb->insert_id;
+            }
+        }
+        
+        return $passage_map;
+    }
+    
+    /**
+     * Import questions with passages (English language style)
+     * 
+     * @param string $content Full document content
+     * @param string $exam_type Exam type
+     * @param string $subject Subject name
+     * @param int $year Year
+     * @param bool $allow_without_answers Allow import without answers
+     * @param bool $allow_missing_options Allow missing options
+     * @return array Import result
+     */
+    public function import_with_passages($content, $exam_type, $subject, $year, $allow_without_answers = false, $allow_missing_options = false) {
+        // Parse passages and questions
+        $parsed = $this->parse_passages_and_questions($content);
+        
+        $result = array(
+            'passages_imported' => 0,
+            'questions_imported' => 0,
+            'skipped' => 0,
+            'errors' => array()
+        );
+        
+        // Import passages first and get the ID mapping
+        $passage_map = array();
+        if (!empty($parsed['passages'])) {
+            $passage_map = $this->import_passages($parsed['passages'], $exam_type, $subject, $year);
+            $result['passages_imported'] = count($passage_map);
+        }
+        
+        // Update question passage_ids with database IDs
+        if (!empty($parsed['questions'])) {
+            foreach ($parsed['questions'] as $q_key => $question) {
+                if (!empty($question['passage_id']) && isset($passage_map[$question['passage_id']])) {
+                    $parsed['questions'][$q_key]['passage_id'] = $passage_map[$question['passage_id']];
+                } else {
+                    $parsed['questions'][$q_key]['passage_id'] = null;
+                }
+            }
+            
+            // Import questions
+            $import_result = $this->import_to_database(
+                $parsed['questions'], 
+                $exam_type, 
+                $subject, 
+                $year, 
+                $allow_without_answers, 
+                $allow_missing_options
+            );
+            
+            $result['questions_imported'] = $import_result['success_count'];
+            $result['skipped'] = $import_result['skipped'];
+            $result['errors'] = $import_result['errors'];
+        }
+        
+        return $result;
     }
     
     /**
@@ -677,6 +1044,7 @@ class ZonaTech_Question_Importer {
         $exam_type = sanitize_text_field($_POST['exam_type'] ?? '');
         $subject = sanitize_text_field($_POST['subject'] ?? '');
         $year = intval($_POST['year'] ?? 0);
+        $import_mode = sanitize_text_field($_POST['import_mode'] ?? 'standard'); // 'standard' or 'english_passages'
         
         // Validation
         if (empty($questions_text)) {
@@ -695,39 +1063,81 @@ class ZonaTech_Question_Importer {
             wp_send_json_error(array('message' => 'Invalid year. Please enter a year between 1990 and ' . (date('Y') + 1) . '.'));
         }
         
-        // Parse questions
-        $questions = $this->parse_questions($questions_text);
+        // Check if this looks like English language style with passages
+        $has_passages = preg_match('/(?:PASSAGE|SECTION\s*[A-Z]?:?\s*COMPREHENSION)/i', $questions_text);
+        $has_inline_answers = preg_match('/Answer:?\s*[A-E]/i', $questions_text);
         
-        if (empty($questions)) {
-            wp_send_json_error(array('message' => 'No questions could be parsed from the provided text. Please check the format.'));
-        }
-        
-        // Parse and merge answers if provided
-        if (!empty($answers_text)) {
-            $answers = $this->parse_answers($answers_text);
-            $questions = $this->merge_questions_with_answers($questions, $answers);
-        }
-        
-        // Import to database
-        $result = $this->import_to_database($questions, $exam_type, $subject, $year);
-        
-        $message = sprintf(
-            'Import complete: %d questions imported, %d skipped (duplicates), %d errors.',
-            $result['success_count'],
-            $result['skipped'],
-            count($result['errors'])
-        );
-        
-        if ($result['success_count'] > 0) {
-            wp_send_json_success(array(
-                'message' => $message,
-                'details' => $result
-            ));
+        // Auto-detect or use specified mode
+        if ($import_mode === 'english_passages' || ($has_passages && $has_inline_answers)) {
+            // Use English language parser with passages support
+            $result = $this->import_with_passages(
+                $questions_text, 
+                $exam_type, 
+                $subject, 
+                $year,
+                true, // Allow questions without answers (we'll extract from inline)
+                false
+            );
+            
+            $message = sprintf(
+                'Import complete: %d passages, %d questions imported, %d skipped (duplicates), %d errors.',
+                $result['passages_imported'],
+                $result['questions_imported'],
+                $result['skipped'],
+                count($result['errors'])
+            );
+            
+            if ($result['questions_imported'] > 0 || $result['passages_imported'] > 0) {
+                wp_send_json_success(array(
+                    'message' => $message,
+                    'details' => $result
+                ));
+            } else {
+                wp_send_json_error(array(
+                    'message' => 'No content was imported. ' . (!empty($result['errors']) ? implode('; ', array_slice($result['errors'], 0, 5)) : ''),
+                    'details' => $result
+                ));
+            }
         } else {
-            wp_send_json_error(array(
-                'message' => 'No questions were imported. ' . (!empty($result['errors']) ? implode('; ', array_slice($result['errors'], 0, 5)) : ''),
-                'details' => $result
-            ));
+            // Standard parsing
+            $questions = $this->parse_questions_with_answers($questions_text);
+            
+            if (empty($questions)) {
+                // Fall back to basic parser
+                $questions = $this->parse_questions($questions_text);
+            }
+            
+            if (empty($questions)) {
+                wp_send_json_error(array('message' => 'No questions could be parsed from the provided text. Please check the format.'));
+            }
+            
+            // Parse and merge answers if provided separately
+            if (!empty($answers_text)) {
+                $answers = $this->parse_answers($answers_text);
+                $questions = $this->merge_questions_with_answers($questions, $answers);
+            }
+            
+            // Import to database
+            $result = $this->import_to_database($questions, $exam_type, $subject, $year, true, false);
+            
+            $message = sprintf(
+                'Import complete: %d questions imported, %d skipped (duplicates), %d errors.',
+                $result['success_count'],
+                $result['skipped'],
+                count($result['errors'])
+            );
+            
+            if ($result['success_count'] > 0) {
+                wp_send_json_success(array(
+                    'message' => $message,
+                    'details' => $result
+                ));
+            } else {
+                wp_send_json_error(array(
+                    'message' => 'No questions were imported. ' . (!empty($result['errors']) ? implode('; ', array_slice($result['errors'], 0, 5)) : ''),
+                    'details' => $result
+                ));
+            }
         }
     }
     
